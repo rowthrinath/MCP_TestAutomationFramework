@@ -1,0 +1,22 @@
+# Test Results
+TestResults/
+test-results-*.trx
+test-output-*.log
+
+# LivingDoc Reports
+**/LivingDoc.html
+
+# Tools
+.tools/
+
+# Build outputs
+bin/
+obj/
+
+# Test execution files
+**/TestExecution.json
+**/TestResult.xml
+
+# Environment files
+.env
+

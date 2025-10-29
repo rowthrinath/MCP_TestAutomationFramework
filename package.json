@@ -1,0 +1,32 @@
+{
+  "name": "qa-hiring-test-suite",
+  "version": "1.0.0",
+  "description": "Automated test suite for Waracle online shop QA challenge",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:report": "./scripts/report.sh",
+    "test:report:simple": "playwright show-report --port 9323",
+    "test:report:kill": "lsof -ti:9323 | xargs kill -9 2>/dev/null || true",
+    "test:report:clean": "npm run test:report:kill && npm run test:report:simple",
+    "test:report:alt": "playwright show-report --port 9324",
+    "install:browsers": "playwright install"
+  },
+  "keywords": [
+    "playwright",
+    "testing",
+    "e2e",
+    "typescript"
+  ],
+  "author": "QA Engineer",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0",
+    "dotenv": "^17.2.3",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+yarn.lock
+package-lock.json
+
+# Build outputs
+*.dll
+*.exe
+*.pdb
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/bin/
+**/obj/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/packages/
+*.nuget.props
+*.nuget.targets
+*.nuget.dgspec.json
+
+# Test results and reports
+test-results/
+playwright-report/
+playwright/.cache/
+*.log
+test-output-*.log
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+*.js.map
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
+

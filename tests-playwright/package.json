@@ -1,0 +1,13 @@
+{
+  "name": "playwright-tests",
+  "version": "1.0.0",
+  "description": "Playwright test suite - run tests from this folder",
+  "scripts": {
+    "test": "playwright test --config=playwright.config.ts",
+    "test:headed": "playwright test --config=playwright.config.ts --headed",
+    "test:debug": "playwright test --config=playwright.config.ts --debug",
+    "test:ui": "playwright test --config=playwright.config.ts --ui",
+    "test:report": "playwright show-report ../playwright-report --port 9323"
+  }
+}
+
