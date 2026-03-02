@@ -1,0 +1,33 @@
+{
+  "name": "mcp-server-playwright",
+  "version": "1.0.0",
+  "description": "MCP server for Playwright browser automation operations",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "mcp-server-playwright": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node build/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "playwright",
+    "browser-automation",
+    "testing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@playwright/test": "^1.48.0",
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
