@@ -55,19 +55,19 @@ jobs:
       - name: Install & Build - Playwright Server
         working-directory: mcp-server-playwright
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Install & Build - API Server
         working-directory: mcp-server-api
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Install & Build - Database Server
         working-directory: mcp-server-database
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Install Playwright Browsers
