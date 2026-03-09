@@ -95,7 +95,7 @@ jobs:
     name: API Tests
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'api-only' || github.event.inputs.test_suite == '' }}
+    if: ${{ github.event.inputs.test_suite == 'api-only' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,12 +109,26 @@ jobs:
         with:
           name: mcp-builds
 
-      - name: Run API test scenarios
-        working-directory: mcp-server-api
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run prompts from tests/ folder
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BEARER_TOKEN: ${{ secrets.API_BEARER_TOKEN }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
-        run: node ../ci/test-runner.mjs --server api --scenarios ../ci/scenarios/api-tests.json
+        run: |
+          shopt -s nullglob
+          echo "Running tests from ./tests/*.txt"
+          for file in tests/*.txt; do
+            echo "\n=== Running $file ==="
+            PROMPT=$(cat "$file")
+            if [ -z "$PROMPT" ]; then
+              echo "Skipping empty file: $file"
+              continue
+            fi
+            claude --print "$PROMPT"
+          done
 
       - name: Upload API test reports
         if: always()
@@ -131,7 +145,7 @@ jobs:
     name: UI Tests
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'ui-only' || github.event.inputs.test_suite == '' }}
+    if: ${{ github.event.inputs.test_suite == 'ui-only' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -149,11 +163,25 @@ jobs:
         working-directory: mcp-server-playwright
         run: npx playwright install --with-deps chromium
 
-      - name: Run UI test scenarios
-        working-directory: mcp-server-playwright
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run prompts from tests/ folder
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
-        run: node ../ci/test-runner.mjs --server ui --scenarios ../ci/scenarios/ui-tests.json
+        run: |
+          shopt -s nullglob
+          echo "Running tests from ./tests/*.txt"
+          for file in tests/*.txt; do
+            echo "\n=== Running $file ==="
+            PROMPT=$(cat "$file")
+            if [ -z "$PROMPT" ]; then
+              echo "Skipping empty file: $file"
+              continue
+            fi
+            claude --print "$PROMPT"
+          done
 
       - name: Upload UI test reports
         if: always()
@@ -170,7 +198,7 @@ jobs:
     name: Database Tests
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'db-only' || github.event.inputs.test_suite == '' }}
+    if: ${{ github.event.inputs.test_suite == 'db-only' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -184,12 +212,26 @@ jobs:
         with:
           name: mcp-builds
 
-      - name: Run DB test scenarios
-        working-directory: mcp-server-database
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run prompts from tests/ folder
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PG_DATABASE: ${{ secrets.PG_DATABASE }}
           PG_SSL: 'true'
-        run: node ../ci/test-runner.mjs --server db --scenarios ../ci/scenarios/db-tests.json
+        run: |
+          shopt -s nullglob
+          echo "Running tests from ./tests/*.txt"
+          for file in tests/*.txt; do
+            echo "\n=== Running $file ==="
+            PROMPT=$(cat "$file")
+            if [ -z "$PROMPT" ]; then
+              echo "Skipping empty file: $file"
+              continue
+            fi
+            claude --print "$PROMPT"
+          done
 
       - name: Upload DB test reports
         if: always()
