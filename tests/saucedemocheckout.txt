@@ -1,0 +1,7 @@
+@checkout @regression
+Navigate to a www.saucedemo.com in headed mode
+Fill Username as standard_user
+Fill Password as secret_user
+Click on Login
+Verify if the user is able to see products page
+I want to add Sauce Labs Backpack to cart and checkout
