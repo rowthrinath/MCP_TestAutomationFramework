@@ -20,6 +20,7 @@ on:
           - ui-only
           - api-only
           - db-only
+          - tests-folder
       environment:
         description: 'Target environment'
         required: true
@@ -252,12 +253,71 @@ jobs:
           retention-days: 30
 
   # ─────────────────────────────────────────────
-  # Job 6: Summary
+  # Job 6: Run Tests from /tests folder
+  # ─────────────────────────────────────────────
+  test-tests-folder:
+    name: Tests Folder Prompts
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'tests-folder') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mcp-builds
+
+      - name: Install Playwright Browsers
+        working-directory: mcp-server-playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run prompts from tests/ folder
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BEARER_TOKEN: ${{ secrets.API_BEARER_TOKEN }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          PG_DATABASE: ${{ secrets.PG_DATABASE }}
+          PG_SSL: 'true'
+        run: |
+          shopt -s nullglob
+          echo "Running tests from ./tests/*.txt"
+          for file in tests/*.txt; do
+            echo "\n=== Running $file ==="
+            PROMPT=$(cat "$file")
+            if [ -z "$PROMPT" ]; then
+              echo "Skipping empty file: $file"
+              continue
+            fi
+            claude --print "$PROMPT"
+          done
+
+      - name: Upload tests folder reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-folder-reports
+          path: |
+            api-reports/
+            playwright-reports/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 7: Summary
   # ─────────────────────────────────────────────
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test-api, test-ui, test-db]
+    needs: [test-api, test-ui, test-db, test-tests-folder]
     if: always()
     steps:
       - name: Download all reports
@@ -275,5 +335,6 @@ jobs:
           echo "| 🌐 UI Tests | ${{ needs.test-ui.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 📡 API Tests | ${{ needs.test-api.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🗄️ DB Tests | ${{ needs.test-db.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📋 Tests Folder | ${{ needs.test-tests-folder.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Reports are available in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
