@@ -95,7 +95,7 @@ jobs:
     name: API Tests
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event.inputs.test_suite == 'api-only' }}
+    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'api-only' || github.event.inputs.test_suite == '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -145,7 +145,7 @@ jobs:
     name: UI Tests
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event.inputs.test_suite == 'ui-only' }}
+    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'ui-only' || github.event.inputs.test_suite == '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -198,7 +198,7 @@ jobs:
     name: Database Tests
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event.inputs.test_suite == 'db-only' }}
+    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'db-only' || github.event.inputs.test_suite == '' }}
     steps:
       - uses: actions/checkout@v4
 
