@@ -1,0 +1,35 @@
+{
+  "name": "mcp-server-api",
+  "version": "1.0.0",
+  "description": "MCP server for comprehensive API testing with HTTP verbs, validations, and assertions",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "mcp-server-api": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node build/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "api-testing",
+    "http",
+    "rest",
+    "validation",
+    "assertions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.7.0",
+    "dotenv": "^17.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.13",
+    "typescript": "^5.6.0"
+  }
+}

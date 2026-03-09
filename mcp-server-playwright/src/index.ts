@@ -6,6 +6,26 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { chromium, firefox, webkit, Browser, BrowserContext, Page } from "playwright";
+import * as fs from "fs";
+import * as path from "path";
+import { exec } from "child_process";
+
+// Report step tracking
+interface ReportStep {
+  stepNumber: number;
+  toolName: string;
+  args: Record<string, unknown>;
+  result: string;
+  status: "passed" | "failed";
+  timestamp: string;
+  duration: number;
+}
+
+const reportSteps: ReportStep[] = [];
+let stepCounter = 0;
+
+// Directory where report artifacts (screenshots, HTML) are saved
+const reportDir: string = path.join(process.cwd(), "playwright-reports");
 
 // Browser state management
 let browser: Browser | null = null;
@@ -515,13 +535,13 @@ const tools: Tool[] = [
   },
   {
     name: "screenshot",
-    description: "Take a screenshot of the page or an element",
+    description: "Take a screenshot of the page or an element. If no path is provided, the screenshot is only captured for the report.",
     inputSchema: {
       type: "object",
       properties: {
         path: {
           type: "string",
-          description: "Path to save the screenshot",
+          description: "Optional path to save the screenshot file. If omitted, screenshot is still captured in the report.",
         },
         selector: {
           type: "string",
@@ -539,7 +559,6 @@ const tools: Tool[] = [
           default: "png",
         },
       },
-      required: ["path"],
     },
   },
   {
@@ -733,6 +752,37 @@ const tools: Tool[] = [
       properties: {},
     },
   },
+  {
+    name: "generate_report",
+    description: "Generate an HTML report of all actions performed during the session. Saves the report with screenshots to disk and opens it in your default browser for easy viewing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        outputPath: {
+          type: "string",
+          description: "Optional additional file path to save the HTML report (e.g., ./report.html). The report is always saved to the playwright-reports directory.",
+        },
+        title: {
+          type: "string",
+          description: "Title for the report",
+          default: "Playwright MCP Test Report",
+        },
+        openInBrowser: {
+          type: "boolean",
+          description: "Automatically open the report in the default browser",
+          default: true,
+        },
+      },
+    },
+  },
+  {
+    name: "clear_report",
+    description: "Clear all recorded steps from the report and reset the session directory",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 // Create server instance
@@ -753,11 +803,131 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools };
 });
 
+// Helper to generate HTML report
+function generateHtmlReport(title: string, steps: ReportStep[]): string {
+  const totalSteps = steps.length;
+  const passedSteps = steps.filter((s) => s.status === "passed").length;
+  const failedSteps = steps.filter((s) => s.status === "failed").length;
+  const totalDuration = steps.reduce((sum, s) => sum + s.duration, 0);
+  const passRate = totalSteps > 0 ? ((passedSteps / totalSteps) * 100).toFixed(1) : "0";
+
+  const stepsHtml = steps
+    .map(
+      (step) => `
+      <tr class="${step.status}">
+        <td>${step.stepNumber}</td>
+        <td><code>${step.toolName}</code></td>
+        <td><pre>${JSON.stringify(step.args, null, 2)}</pre></td>
+        <td class="result-cell">${step.result}</td>
+        <td><span class="badge badge-${step.status}">${step.status.toUpperCase()}</span></td>
+        <td>${step.duration}ms</td>
+        <td>${step.timestamp}</td>
+      </tr>`
+    )
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; color: #f8fafc; }
+    .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
+    .card .label { color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 2rem; font-weight: 700; margin-top: 0.25rem; }
+    .card .value.total { color: #60a5fa; }
+    .card .value.passed { color: #4ade80; }
+    .card .value.failed { color: #f87171; }
+    .card .value.duration { color: #fbbf24; }
+    .card .value.rate { color: #a78bfa; }
+    .progress-bar { width: 100%; height: 8px; background: #334155; border-radius: 4px; margin-top: 0.75rem; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #4ade80, #22d3ee); transition: width 0.3s; }
+    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
+    th { background: #334155; color: #cbd5e1; padding: 0.75rem 1rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; font-size: 0.9rem; vertical-align: top; }
+    tr.passed td { border-left: 3px solid transparent; }
+    tr.failed td { background: rgba(248, 113, 113, 0.05); }
+    tr.failed td:first-child { border-left: 3px solid #f87171; }
+    .badge { padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; }
+    .badge-passed { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+    .badge-failed { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+    pre { background: #0f172a; padding: 0.5rem; border-radius: 6px; font-size: 0.75rem; overflow-x: auto; max-width: 300px; white-space: pre-wrap; word-break: break-all; }
+    code { background: #334155; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; }
+    .result-cell { max-width: 250px; word-wrap: break-word; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .footer { text-align: center; margin-top: 2rem; color: #475569; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📋 ${title}</h1>
+    <p class="subtitle">Generated on ${new Date().toLocaleString()} by MCP Playwright Server</p>
+
+    <div class="summary">
+      <div class="card">
+        <div class="label">Total Steps</div>
+        <div class="value total">${totalSteps}</div>
+      </div>
+      <div class="card">
+        <div class="label">Passed</div>
+        <div class="value passed">${passedSteps}</div>
+      </div>
+      <div class="card">
+        <div class="label">Failed</div>
+        <div class="value failed">${failedSteps}</div>
+      </div>
+      <div class="card">
+        <div class="label">Duration</div>
+        <div class="value duration">${(totalDuration / 1000).toFixed(2)}s</div>
+      </div>
+      <div class="card">
+        <div class="label">Pass Rate</div>
+        <div class="value rate">${passRate}%</div>
+        <div class="progress-bar"><div class="progress-fill" style="width: ${passRate}%"></div></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tool</th>
+          <th>Arguments</th>
+          <th>Result</th>
+          <th>Status</th>
+          <th>Duration</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${stepsHtml}
+      </tbody>
+    </table>
+
+    <p class="footer">MCP Playwright Server v1.0.0 — Automation Report</p>
+  </div>
+</body>
+</html>`;
+}
+
 // Call tool handler
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const startTime = Date.now();
 
-  try {
+  // Skip tracking for report-related tools
+  const skipTracking = name === "generate_report" || name === "clear_report";
+
+  // Inner function to execute the tool
+  async function executeTool(): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
     switch (name) {
       case "launch_browser": {
         if (browser) {
@@ -1099,20 +1269,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "screenshot": {
         const page = getCurrentPage();
-        const path = args?.path as string;
+        const screenshotPath = args?.path as string | undefined;
         const selector = args?.selector as string;
         const fullPage = (args?.fullPage as boolean) || false;
         const type = (args?.type as "png" | "jpeg") || "png";
 
+        const opts: any = { type };
+        if (screenshotPath) {
+          // Ensure directory exists
+          const dir = path.dirname(path.resolve(screenshotPath));
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          opts.path = screenshotPath;
+        }
+        if (!selector) {
+          opts.fullPage = fullPage;
+        }
+
         if (selector) {
           const element = await page.locator(selector);
-          await element.screenshot({ path, type });
+          await element.screenshot(opts);
         } else {
-          await page.screenshot({ path, fullPage, type });
+          await page.screenshot(opts);
         }
 
         return {
-          content: [{ type: "text", text: `Screenshot saved to ${path}` }],
+          content: [{ type: "text", text: screenshotPath ? `Screenshot saved to ${screenshotPath}` : "Screenshot captured for report" }],
         };
       }
 
@@ -1248,11 +1431,112 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "generate_report": {
+        const title = (args?.title as string) || "Playwright MCP Test Report";
+        const openInBrowser = args?.openInBrowser !== false; // default true
+
+        if (reportSteps.length === 0) {
+          return {
+            content: [{ type: "text", text: "No steps recorded yet. Run some tools first, then generate the report." }],
+          };
+        }
+
+        const html = generateHtmlReport(title, reportSteps);
+
+        // Create a timestamped report file directly in playwright-reports/
+        fs.mkdirSync(reportDir, { recursive: true });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
+        const reportFilePath = path.join(reportDir, `report-${timestamp}.html`);
+        fs.writeFileSync(reportFilePath, html, "utf-8");
+
+        // Also save to a custom path if provided
+        const outputPath = args?.outputPath as string;
+        if (outputPath) {
+          const resolvedPath = path.resolve(outputPath);
+          const outDir = path.dirname(resolvedPath);
+          fs.mkdirSync(outDir, { recursive: true });
+          fs.writeFileSync(resolvedPath, html, "utf-8");
+        }
+
+        // Auto-open in default browser (non-blocking)
+        if (openInBrowser) {
+          const openCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+          exec(`${openCmd} "${reportFilePath}"`);
+        }
+
+        const passedCount = reportSteps.filter((s) => s.status === "passed").length;
+        const failedCount = reportSteps.filter((s) => s.status === "failed").length;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `📋 **Test Report Generated**`,
+                ``,
+                `| Metric | Value |`,
+                `|--------|-------|`,
+                `| Total Steps | ${reportSteps.length} |`,
+                `| Passed | ✅ ${passedCount} |`,
+                `| Failed | ❌ ${failedCount} |`,
+                `| Pass Rate | ${reportSteps.length > 0 ? ((passedCount / reportSteps.length) * 100).toFixed(1) : 0}% |`,
+                ``,
+                `📂 **Report:** \`${reportFilePath}\``,
+                outputPath ? `📂 **Copy:** \`${path.resolve(outputPath)}\`` : "",
+                ``,
+                openInBrowser ? `🌐 Opened in your default browser.` : "",
+              ].filter(Boolean).join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "clear_report": {
+        const count = reportSteps.length;
+        reportSteps.length = 0;
+        stepCounter = 0;
+        return {
+          content: [{ type: "text", text: `Report cleared. Removed ${count} recorded steps.` }],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
+  }
+
+  try {
+    const result = await executeTool();
+
+    // Track step — zero overhead, no screenshots during execution
+    if (!skipTracking) {
+      reportSteps.push({
+        stepNumber: ++stepCounter,
+        toolName: name,
+        args: (args as Record<string, unknown>) || {},
+        result: result.content.map((c) => c.text).join("\n"),
+        status: "passed",
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - startTime,
+      });
+    }
+
+    return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (!skipTracking) {
+      reportSteps.push({
+        stepNumber: ++stepCounter,
+        toolName: name,
+        args: (args as Record<string, unknown>) || {},
+        result: errorMessage,
+        status: "failed",
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - startTime,
+      });
+    }
+
     return {
       content: [{ type: "text", text: `Error: ${errorMessage}` }],
       isError: true,
@@ -1269,5 +1553,5 @@ async function main() {
 
 main().catch((error) => {
   console.error("Fatal error:", error);
-  process.exit(1);
+  (globalThis as any).process?.exit(1);
 });

@@ -1,0 +1,279 @@
+name: QA Automation - MCP Servers
+
+on:
+  # Run on push to main
+  push:
+    branches: [main, master]
+  # Run on PRs
+  pull_request:
+    branches: [main, master]
+  # Manual trigger with options
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ui-only
+          - api-only
+          - db-only
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      test_prompt:
+        description: 'Custom test prompt for Claude (optional)'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Build all MCP servers
+  # ─────────────────────────────────────────────
+  build:
+    name: Build MCP Servers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install & Build - Playwright Server
+        working-directory: mcp-server-playwright
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install & Build - API Server
+        working-directory: mcp-server-api
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install & Build - Database Server
+        working-directory: mcp-server-database
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Playwright Browsers
+        working-directory: mcp-server-playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-builds
+          path: |
+            mcp-server-playwright/build/
+            mcp-server-playwright/node_modules/
+            mcp-server-api/build/
+            mcp-server-api/node_modules/
+            mcp-server-database/build/
+            mcp-server-database/node_modules/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────
+  # Job 2: Run API tests
+  # ─────────────────────────────────────────────
+  test-api:
+    name: API Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'api-only' || github.event.inputs.test_suite == '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mcp-builds
+
+      - name: Run API test scenarios
+        working-directory: mcp-server-api
+        env:
+          BEARER_TOKEN: ${{ secrets.API_BEARER_TOKEN }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: node ../ci/test-runner.mjs --server api --scenarios ../ci/scenarios/api-tests.json
+
+      - name: Upload API test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-reports
+          path: api-reports/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 3: Run UI tests
+  # ─────────────────────────────────────────────
+  test-ui:
+    name: UI Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'ui-only' || github.event.inputs.test_suite == '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mcp-builds
+
+      - name: Install Playwright Browsers
+        working-directory: mcp-server-playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI test scenarios
+        working-directory: mcp-server-playwright
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+        run: node ../ci/test-runner.mjs --server ui --scenarios ../ci/scenarios/ui-tests.json
+
+      - name: Upload UI test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-reports
+          path: playwright-reports/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 4: Run DB tests
+  # ─────────────────────────────────────────────
+  test-db:
+    name: Database Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == 'db-only' || github.event.inputs.test_suite == '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mcp-builds
+
+      - name: Run DB test scenarios
+        working-directory: mcp-server-database
+        env:
+          PG_DATABASE: ${{ secrets.PG_DATABASE }}
+          PG_SSL: 'true'
+        run: node ../ci/test-runner.mjs --server db --scenarios ../ci/scenarios/db-tests.json
+
+      - name: Upload DB test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-test-reports
+          path: db-reports/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 5: Claude Code Agent (Full E2E)
+  # ─────────────────────────────────────────────
+  test-claude-agent:
+    name: Claude Agent - Full E2E
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mcp-builds
+
+      - name: Install Playwright Browsers
+        working-directory: mcp-server-playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Agent with test prompt
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BEARER_TOKEN: ${{ secrets.API_BEARER_TOKEN }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          PG_DATABASE: ${{ secrets.PG_DATABASE }}
+          PG_SSL: 'true'
+        run: |
+          PROMPT="${{ github.event.inputs.test_prompt }}"
+          if [ -z "$PROMPT" ]; then
+            PROMPT="Run the API smoke tests: GET /api/health, validate status 200, then generate_report with title 'CI/CD Smoke Test'"
+          fi
+          claude --print "$PROMPT"
+
+      - name: Upload all reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-agent-reports
+          path: |
+            api-reports/
+            playwright-reports/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 6: Summary
+  # ─────────────────────────────────────────────
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [test-api, test-ui, test-db]
+    if: always()
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-test-reports'
+          merge-multiple: true
+
+      - name: Generate summary
+        run: |
+          echo "## 🧪 QA Automation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Server | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌐 UI Tests | ${{ needs.test-ui.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📡 API Tests | ${{ needs.test-api.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🗄️ DB Tests | ${{ needs.test-db.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Reports are available in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
