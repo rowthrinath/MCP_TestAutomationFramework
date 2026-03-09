@@ -159,6 +159,10 @@ jobs:
         with:
           name: mcp-builds
 
+      - name: Install Playwright Dependencies
+        working-directory: mcp-server-playwright
+        run: npm install
+
       - name: Install Playwright Browsers
         working-directory: mcp-server-playwright
         run: npx playwright install --with-deps chromium
@@ -262,6 +266,10 @@ jobs:
         with:
           name: mcp-builds
 
+      - name: Install Playwright Dependencies
+        working-directory: mcp-server-playwright
+        run: npm install
+
       - name: Install Playwright Browsers
         working-directory: mcp-server-playwright
         run: npx playwright install --with-deps chromium
@@ -314,6 +322,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mcp-builds
+
+      - name: Install Playwright Dependencies
+        working-directory: mcp-server-playwright
+        run: npm install
 
       - name: Install Playwright Browsers
         working-directory: mcp-server-playwright
